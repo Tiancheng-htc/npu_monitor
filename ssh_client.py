@@ -65,10 +65,10 @@ def _ssh_common_args(ssh_binary: str, ssh_config: Optional[str]) -> List[str]:
     args += [
         "-T",
         "-o", "BatchMode=yes",
-        "-o", "ConnectTimeout=5",
+        "-o", "ConnectTimeout=15",
         "-o", "StrictHostKeyChecking=accept-new",
-        "-o", "ServerAliveInterval=3",
-        "-o", "ServerAliveCountMax=2",
+        "-o", "ServerAliveInterval=10",
+        "-o", "ServerAliveCountMax=3",
         "-o", "LogLevel=ERROR",
     ]
     return args
@@ -86,7 +86,7 @@ def run_ssh(
     cmd: str,
     ssh_binary: str = "ssh",
     ssh_config: Optional[str] = None,
-    timeout: float = 12.0,
+    timeout: float = 45.0,
 ) -> Tuple[int, str, str]:
     args = _ssh_common_args(ssh_binary, ssh_config) + [host, cmd]
     try:
@@ -115,7 +115,7 @@ def run_ssh_pipe(
     stdin_bytes: bytes,
     ssh_binary: str = "ssh",
     ssh_config: Optional[str] = None,
-    timeout: float = 30.0,
+    timeout: float = 90.0,
 ) -> Tuple[int, str, str]:
     """Run an SSH command and feed ``stdin_bytes`` to its stdin.
 

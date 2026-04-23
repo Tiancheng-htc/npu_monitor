@@ -43,7 +43,7 @@ HOLD_SCRIPT_NAME = "hold_npu.py"
 HOLD_REMOTE_PATH = "/tmp/npu_monitor_hold.py"
 HOLD_REMOTE_LOG = "/tmp/npu_monitor_hold.log"
 HOLD_PROC_MARKER = "NPU_HOLD"
-HOLD_STARTUP_TIMEOUT_S = 60
+HOLD_STARTUP_TIMEOUT_S = 180
 MIN_CHIPS_FOR_AUTO_HOLD = 16
 
 
@@ -65,7 +65,7 @@ class HostRunnable(QRunnable):
 
     def run(self):
         rc, stdout, stderr = run_ssh(
-            self.host, "npu-smi info", ssh_config=self.ssh_config, timeout=12.0
+            self.host, "npu-smi info", ssh_config=self.ssh_config, timeout=45.0
         )
         if rc != 0:
             msg = (stderr or stdout or f"exit {rc}").strip()
@@ -116,7 +116,7 @@ class HoldRunnable(QRunnable):
             remote_cmd,
             stdin_bytes=self.script_bytes,
             ssh_config=self.ssh_config,
-            timeout=25.0,
+            timeout=90.0,
         )
         if rc != 0 or "HOLD_OK" not in stdout:
             msg = (stderr or stdout or f"exit {rc}").strip()
@@ -147,7 +147,7 @@ class ReleaseRunnable(QRunnable):
             "echo RELEASE_OK"
         )
         rc, stdout, stderr = run_ssh(
-            self.host, remote_cmd, ssh_config=self.ssh_config, timeout=10.0
+            self.host, remote_cmd, ssh_config=self.ssh_config, timeout=30.0
         )
         if "RELEASE_OK" in stdout:
             self.signals.finished.emit(self.host, {"ok": True})
