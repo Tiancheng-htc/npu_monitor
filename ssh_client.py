@@ -13,6 +13,12 @@ class SSHHost:
 
 
 def parse_ssh_config(path: str) -> List[SSHHost]:
+    """Read an OpenSSH config file and return unique host entries.
+
+    The config is only used to enumerate host aliases for the UI; the
+    actual ssh calls don't pass ``-F`` and just rely on ssh's default
+    behavior of reading ``~/.ssh/config``.
+    """
     hosts: List[SSHHost] = []
     seen: set = set()
     current: Optional[dict] = None
@@ -58,20 +64,15 @@ def parse_ssh_config(path: str) -> List[SSHHost]:
 CREATE_NO_WINDOW = 0x08000000
 
 
-def _ssh_common_args(ssh_binary: str, ssh_config: Optional[str]) -> List[str]:
-    args = [ssh_binary]
-    if ssh_config:
-        args += ["-F", ssh_config]
-    args += [
-        "-T",
+def _ssh_args(ssh_binary: str, host: str, cmd: str) -> List[str]:
+    return [
+        ssh_binary,
         "-o", "BatchMode=yes",
-        "-o", "ConnectTimeout=15",
+        "-o", "ConnectTimeout=20",
         "-o", "StrictHostKeyChecking=accept-new",
-        "-o", "ServerAliveInterval=10",
-        "-o", "ServerAliveCountMax=3",
-        "-o", "LogLevel=ERROR",
+        f"root@{host}",
+        cmd,
     ]
-    return args
 
 
 def _subprocess_kwargs() -> dict:
@@ -85,10 +86,9 @@ def run_ssh(
     host: str,
     cmd: str,
     ssh_binary: str = "ssh",
-    ssh_config: Optional[str] = None,
     timeout: float = 45.0,
 ) -> Tuple[int, str, str]:
-    args = _ssh_common_args(ssh_binary, ssh_config) + [host, cmd]
+    args = _ssh_args(ssh_binary, host, cmd)
     try:
         result = subprocess.run(
             args,
@@ -101,10 +101,7 @@ def run_ssh(
     except subprocess.TimeoutExpired:
         return -1, "", f"SSH timeout after {timeout:.0f}s"
     except FileNotFoundError:
-        return -1, "", (
-            f"SSH binary not found: {ssh_binary}. "
-            "On Windows 10/11, enable 'OpenSSH Client' in Settings -> Apps -> Optional features."
-        )
+        return -1, "", f"SSH binary not found: {ssh_binary}"
     except Exception as e:
         return -1, "", f"{type(e).__name__}: {e}"
 
@@ -114,15 +111,9 @@ def run_ssh_pipe(
     cmd: str,
     stdin_bytes: bytes,
     ssh_binary: str = "ssh",
-    ssh_config: Optional[str] = None,
     timeout: float = 90.0,
 ) -> Tuple[int, str, str]:
-    """Run an SSH command and feed ``stdin_bytes`` to its stdin.
-
-    Used to ship a script to the remote (``cat > /tmp/...`` on the far
-    side) without depending on scp.
-    """
-    args = _ssh_common_args(ssh_binary, ssh_config) + [host, cmd]
+    args = _ssh_args(ssh_binary, host, cmd)
     try:
         result = subprocess.run(
             args,

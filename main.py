@@ -57,16 +57,13 @@ class WorkerSignals(QObject):
 
 
 class HostRunnable(QRunnable):
-    def __init__(self, host: str, ssh_config: str):
+    def __init__(self, host: str):
         super().__init__()
         self.host = host
-        self.ssh_config = ssh_config
         self.signals = WorkerSignals()
 
     def run(self):
-        rc, stdout, stderr = run_ssh(
-            self.host, "npu-smi info", ssh_config=self.ssh_config, timeout=45.0
-        )
+        rc, stdout, stderr = run_ssh(self.host, "npu-smi info", timeout=45.0)
         if rc != 0:
             msg = (stderr or stdout or f"exit {rc}").strip()
             if len(msg) > 240:
@@ -89,17 +86,14 @@ class HostRunnable(QRunnable):
 class HoldRunnable(QRunnable):
     """Ship hold_npu.py to the remote and launch it in the background."""
 
-    def __init__(self, host: str, ssh_config: str, script_bytes: bytes, percent: float):
+    def __init__(self, host: str, script_bytes: bytes, percent: float):
         super().__init__()
         self.host = host
-        self.ssh_config = ssh_config
         self.script_bytes = script_bytes
         self.percent = percent
         self.signals = WorkerSignals()
 
     def run(self):
-        # The remote side reads stdin into the script file, launches it
-        # detached, and echoes HOLD_OK so we can tell the delivery succeeded.
         remote_cmd = (
             "set -e; "
             f"DEST={HOLD_REMOTE_PATH}; "
@@ -115,7 +109,6 @@ class HoldRunnable(QRunnable):
             self.host,
             remote_cmd,
             stdin_bytes=self.script_bytes,
-            ssh_config=self.ssh_config,
             timeout=90.0,
         )
         if rc != 0 or "HOLD_OK" not in stdout:
@@ -133,10 +126,9 @@ class HoldRunnable(QRunnable):
 
 
 class ReleaseRunnable(QRunnable):
-    def __init__(self, host: str, ssh_config: str):
+    def __init__(self, host: str):
         super().__init__()
         self.host = host
-        self.ssh_config = ssh_config
         self.signals = WorkerSignals()
 
     def run(self):
@@ -146,9 +138,7 @@ class ReleaseRunnable(QRunnable):
             f"rm -f {HOLD_REMOTE_PATH} {HOLD_REMOTE_LOG} 2>/dev/null; "
             "echo RELEASE_OK"
         )
-        rc, stdout, stderr = run_ssh(
-            self.host, remote_cmd, ssh_config=self.ssh_config, timeout=30.0
-        )
+        rc, stdout, stderr = run_ssh(self.host, remote_cmd, timeout=30.0)
         if "RELEASE_OK" in stdout:
             self.signals.finished.emit(self.host, {"ok": True})
         else:
@@ -673,14 +663,13 @@ class MainWindow(QMainWindow):
             self.reload_hosts()
             if not self.cards:
                 return
-        cfg = self.config_edit.text().strip()
         started = 0
         for alias, card in self.cards.items():
             if card.in_flight:
                 continue
             card.in_flight = True
             card.set_pending()
-            r = HostRunnable(alias, cfg)
+            r = HostRunnable(alias)
             r.signals.finished.connect(self.on_host_finished)
             self.thread_pool.start(r)
             started += 1
@@ -792,7 +781,6 @@ class MainWindow(QMainWindow):
         card.set_hold_state("holding")
         r = HoldRunnable(
             alias,
-            self.config_edit.text().strip(),
             self.hold_script_bytes,
             self.hold_pct_spin.value(),
         )
@@ -829,7 +817,7 @@ class MainWindow(QMainWindow):
         card.hold_badge.setText("⏳ Releasing…")
         self.hold_in_progress.pop(alias, None)
         self.hold_failed.pop(alias, None)
-        r = ReleaseRunnable(alias, self.config_edit.text().strip())
+        r = ReleaseRunnable(alias)
         r.signals.finished.connect(self.on_release_finished)
         self.thread_pool.start(r)
 
